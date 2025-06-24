@@ -1,0 +1,25 @@
+[project]
+name = "PinappleClient"
+version = "1.0.0"
+authors = [
+ { name="Erik Bremstedt", email="erik.bremstedt-pedersen@regionstockholm.se" },
+]
+description = "Client for interacting with Pinapple"
+readme = "README.md"
+requires-python = ">=3.12"
+classifiers = [
+ "Programming Language :: Python :: 3",
+ "Programming Language :: Python :: 3.12",
+ "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+ "Operating System :: OS Independent",
+]
+license = {text = "GPL-3.0"}
+dependencies = [
+ "requests>=2.32.3",
+ "pandas>=2.2.3",
+ "roskarl>=2.3.3"
+]
+
+[project.urls]
+Homepage = "https://github.com/ebremst3dt/pinappleclient"
+Issues = "https://github.com/ebremst3dt/pinappleclient/issues"
