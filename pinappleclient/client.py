@@ -56,12 +56,8 @@ class PinappleClient:
             data={"input_string": pin},
         )
 
-        print(pin)
-
         if "encrypted_string" not in encrypted_response:
             raise Exception(str(encrypted_response))
-
-        print(encrypted_response["encrypted_string"])
 
         return encrypted_response["encrypted_string"]
 
