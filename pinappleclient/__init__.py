@@ -1,3 +1,3 @@
-from client import PinappleClient
+from pinappleclient.client import PinappleClient
 
 __all__ = ["PinappleClient"]
