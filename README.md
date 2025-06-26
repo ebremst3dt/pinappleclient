@@ -78,3 +78,4 @@ This project is licensed under the GPL-3.0 License.
 
 - [Homepage](https://github.com/ebremst3dt/pinappleclient)
 - [Issues](https://github.com/ebremst3dt/pinappleclient/issues)
+- [Pypi](https://pypi.org/project/PinappleClient/)
