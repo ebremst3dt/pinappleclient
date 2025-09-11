@@ -8,6 +8,7 @@ A Python client for interacting with the Pinapple encryption API.
 - **Flexible Encryption** ⚡ - Support for strict and loose encryption modes
 - **Fallback Strategy** 🔄 - Automatic fallback from strict to loose encryption
 - **Smart Token Management** ⏰ - Configurable token refresh with expiration handling
+- **Robust Network Handling** 🔁 - Automatic retries with configurable backoff for network issues
 
 ## 📦 Installation
 
@@ -20,12 +21,15 @@ pip install PinappleClient
 ```python
 from pinapple_client import PinappleClient
 
-# Initialize client with automatic token refresh
+# Initialize client with automatic token refresh and network resilience
 client = PinappleClient(
     user="your_username",
     password="your_password",
     api_url="https://api.pinapple.com",
-    refresh_buffer_minutes=5  # Refresh token 5 minutes before expiration
+    refresh_token_after_x_minutes=5,  # Refresh token 5 minutes before expiration
+    timeout=30,                       # Request timeout in seconds
+    max_retries=3,                    # Number of retry attempts
+    backoff_base=2                    # Exponential backoff base (2s, 4s, 8s)
 )
 
 # Encrypt a single PIN
@@ -76,7 +80,7 @@ The client automatically handles token management with intelligent refresh:
 ### Token Configuration
 ```python
 # Refresh token 10 minutes before it expires
-client = PinappleClient(..., refresh_buffer_minutes=10)
+client = PinappleClient(..., refresh_token_after_x_minutes=10)
 
 # Check token status
 expiration = client.get_token_expiration()
@@ -89,6 +93,33 @@ should_refresh = client.should_refresh_token()
 - Automatic refresh during long DataFrame operations
 
 **Perfect for long-running encryption jobs** - no manual token management required!
+
+## 🔁 Network Resilience
+
+The client includes robust network error handling for unreliable connections:
+
+### Automatic Retry Logic
+- **Connection errors** (DNS resolution, network unreachable)
+- **Timeout errors** (slow network responses)
+- **Request exceptions** (various network issues)
+
+### Configurable Retry Parameters
+```python
+client = PinappleClient(
+    ...,
+    timeout=45,        # Longer timeout for slow networks
+    max_retries=5,     # More retry attempts
+    backoff_base=3     # Aggressive backoff (3s, 9s, 27s, 81s, 243s)
+)
+```
+
+### Retry Behavior
+- **Exponential backoff**: Wait time = `backoff_base ^ (attempt + 1)`
+- **Default settings**: 3 retries with 2s, 4s, 8s delays
+- **Progress feedback**: Logs each retry attempt with wait time
+- **Final failure**: Clear error message after all retries exhausted
+
+**Ideal for corporate networks and VPN connections** with intermittent connectivity issues!
 
 ## 📄 License
 

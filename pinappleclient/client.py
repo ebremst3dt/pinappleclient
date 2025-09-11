@@ -1,8 +1,9 @@
 import base64
 from dataclasses import dataclass
 from datetime import datetime
+import time
 import json
-from typing import Optional, Dict, Any
+from typing import Optional, Any
 import requests
 import pandas as pd
 
@@ -13,6 +14,9 @@ class PinappleClient:
     password: str
     api_url: str
     refresh_token_after_x_minutes: int = 5
+    timeout: int = 30
+    max_retries: int = 3
+    backoff_base: float = 2.0
 
     def __post_init__(self) -> None:
         self._token: Optional[str] = None
@@ -57,22 +61,37 @@ class PinappleClient:
     def _call_api(
         self,
         endpoint: str,
-        headers: Dict[str, str],
-        data: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
-        response = requests.post(
-            f"{self.api_url}/{endpoint}",
-            json=data if endpoint != "auth/token" else None,
-            data=data if endpoint == "auth/token" else None,
-            headers=headers,
-        )
+        headers: dict[str, str],
+        data: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
 
-        try:
-            return response.json()
-        except Exception:
-            raise Exception(
-                f"{self.api_url}/{endpoint}: Non-JSON response: {response.text}"
-            )
+        for attempt in range(self.max_retries):
+            try:
+                response = requests.post(
+                    f"{self.api_url}/{endpoint}",
+                    json=data if endpoint != "auth/token" else None,
+                    data=data if endpoint == "auth/token" else None,
+                    headers=headers,
+                    timeout=self.timeout
+                )
+
+                try:
+                    return response.json()
+                except Exception:
+                    raise Exception(
+                        f"{self.api_url}/{endpoint}: Non-JSON response: {response.text}"
+                    )
+
+            except (requests.exceptions.ConnectionError,
+                    requests.exceptions.Timeout,
+                    requests.exceptions.RequestException) as e:
+
+                if attempt == self.max_retries - 1:
+                    raise Exception(f"Failed to connect after {self.max_retries} attempts: {str(e)}")
+
+                wait_time = self.backoff_base ** (attempt + 1)
+                print(f"Connection attempt {attempt + 1} failed: {str(e)}. Retrying in {wait_time}s...")
+                time.sleep(wait_time)
 
     def encrypt_pin_strict(self, pin: str) -> Optional[str]:
         token = self.get_token()
@@ -133,7 +152,7 @@ class PinappleClient:
 
         return encrypted_response_strict["encrypted_string"]
 
-    def decrypt_pin(self, encrypted_data: Dict[str, Any]) -> Optional[str]:
+    def decrypt_pin(self, encrypted_data: dict[str, Any]) -> Optional[str]:
         token = self.get_token()
         decrypted_response = self._call_api(
             endpoint="decrypt",

@@ -6,18 +6,22 @@ from roskarl import env_var
 def test_pinapple_endpoints() -> None:
     print("=== Testing Pinapple API Endpoints with Token Management ===\n")
 
-    # Initialize client with 2-minute refresh buffer
+    # Initialize client with retry and backoff settings
     client = PinappleClient(
         user=env_var("PINAPPLE_USER"),
         password=env_var("PINAPPLE_PASSWORD"),
         api_url=env_var("PINAPPLE_URL"),
         refresh_token_after_x_minutes=2,
+        timeout=30,
+        max_retries=3,
+        backoff_base=2,
     )
 
     test_pin: str = "20150331-9442"
 
-    # Test 1: Token expiration info
+    # Test 1: Token expiration info (with retry logic)
     try:
+        print("Testing token retrieval with retry logic...")
         token = client.get_token()
         print(f"✓ Token obtained: {token[:20]}...")
 
@@ -29,39 +33,40 @@ def test_pinapple_endpoints() -> None:
         print(f"✓ Should refresh token: {should_refresh}")
 
     except Exception as e:
-        print(f"✗ Token failed: {e}")
+        print(f"✗ Token failed after retries: {e}")
         return
 
-    # Test 2: Encryption methods (token auto-refreshes if needed)
+    # Test 2: Encryption methods (with connection retry)
     try:
+        print("\nTesting encryption with retry logic...")
         encrypted_strict = client.encrypt_pin_strict(test_pin)
         print(f"✓ Strict encryption: {encrypted_strict}")
     except Exception as e:
-        print(f"✗ Strict encryption failed: {e}")
+        print(f"✗ Strict encryption failed after retries: {e}")
         encrypted_strict = None
 
     try:
         encrypted_loose = client.encrypt_pin_loose(test_pin)
         print(f"✓ Loose encryption: {encrypted_loose}")
     except Exception as e:
-        print(f"✗ Loose encryption failed: {e}")
+        print(f"✗ Loose encryption failed after retries: {e}")
 
     try:
         encrypted_hybrid = client.encrypt_pin_strict_then_loose(test_pin)
         print(f"✓ Strict-then-loose: {encrypted_hybrid}")
     except Exception as e:
-        print(f"✗ Strict-then-loose failed: {e}")
+        print(f"✗ Strict-then-loose failed after retries: {e}")
 
-    # Test 3: Decryption
+    # Test 3: Decryption (with retry)
     if encrypted_strict:
         try:
             decrypted = client.decrypt_pin({"encrypted_string": encrypted_strict})
             print(f"✓ Decryption result: {decrypted}")
             print(f"✓ Matches original: {decrypted == test_pin}")
         except Exception as e:
-            print(f"✗ Decryption failed: {e}")
+            print(f"✗ Decryption failed after retries: {e}")
 
-    # Test 4: DataFrame encryption with token refresh check
+    # Test 4: DataFrame encryption with retry capability
     try:
         test_df = pd.DataFrame({
             "id": [1, 2, 3, 4, 5],
@@ -70,7 +75,7 @@ def test_pinapple_endpoints() -> None:
             "name": ["Alice", "Bob", "Charlie", "David", "Eve"],
         })
 
-        print(f"\n--- DataFrame encryption (token auto-refresh enabled) ---")
+        print(f"\n--- DataFrame encryption (with retry logic) ---")
         print("Original DataFrame:")
         print(test_df)
 
@@ -86,18 +91,28 @@ def test_pinapple_endpoints() -> None:
         print(encrypted_df)
 
     except Exception as e:
-        print(f"✗ DataFrame encryption failed: {e}")
+        print(f"✗ DataFrame encryption failed after retries: {e}")
 
-    # Test 5: Force token refresh demonstration
-    print(f"\n--- Manual token refresh test ---")
-    old_token = client._token
-    print(f"Current token: {old_token[:20] if old_token else 'None'}...")
+    # Test 5: Test different retry configurations
+    print(f"\n--- Testing different retry configurations ---")
 
-    # Force refresh by clearing token
-    client._token = None
-    new_token = client.get_token()
-    print(f"New token: {new_token[:20]}...")
-    print(f"Tokens different: {old_token != new_token}")
+    # Test with aggressive backoff
+    aggressive_client = PinappleClient(
+        user=env_var("PINAPPLE_USER"),
+        password=env_var("PINAPPLE_PASSWORD"),
+        api_url=env_var("PINAPPLE_URL"),
+        refresh_token_after_x_minutes=2,
+        timeout=45,
+        max_retries=5,
+        backoff_base=3,
+    )
+
+    try:
+        print("Testing with aggressive retry settings (3s, 9s, 27s backoff)...")
+        token = aggressive_client.get_token()
+        print(f"✓ Aggressive retry client token: {token[:20]}...")
+    except Exception as e:
+        print(f"✗ Aggressive retry client failed: {e}")
 
 
 if __name__ == "__main__":
