@@ -1,4 +1,7 @@
+import base64
 from dataclasses import dataclass
+from datetime import datetime
+import json
 from typing import Optional, Dict, Any
 import requests
 import pandas as pd
@@ -9,9 +12,47 @@ class PinappleClient:
     user: str
     password: str
     api_url: str
+    refresh_token_after_x_minutes: int = 5
 
     def __post_init__(self) -> None:
         self._token: Optional[str] = None
+
+    def get_token_expiration(self) -> Optional[datetime]:
+        if self._token is None:
+            return None
+
+        try:
+            payload_b64 = self._token.split('.')[1]
+            payload_b64 += '=' * (4 - len(payload_b64) % 4)
+            payload = json.loads(base64.b64decode(payload_b64))
+
+            exp_timestamp = payload.get('exp')
+            if exp_timestamp is None:
+                return None
+
+            return datetime.fromtimestamp(exp_timestamp)
+        except Exception:
+            return None
+
+    def should_refresh_token(self) -> bool:
+        exp_time = self.get_token_expiration()
+        if exp_time is None:
+            return True
+
+        time_until_exp = (exp_time - datetime.now()).total_seconds()
+        return time_until_exp <= (self.refresh_token_after_x_minutes * 60)
+
+    def get_token(self) -> str:
+        if self._token is None or self.should_refresh_token():
+            token_response = self._call_api(
+                endpoint="auth/token",
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                data={"username": self.user, "password": self.password},
+            )
+            if "access_token" not in token_response:
+                raise Exception(str(token_response))
+            self._token = token_response["access_token"]
+        return self._token
 
     def _call_api(
         self,
@@ -32,18 +73,6 @@ class PinappleClient:
             raise Exception(
                 f"{self.api_url}/{endpoint}: Non-JSON response: {response.text}"
             )
-
-    def get_token(self) -> str:
-        if self._token is None:
-            token_response = self._call_api(
-                endpoint="auth/token",
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
-                data={"username": self.user, "password": self.password},
-            )
-            if "access_token" not in token_response:
-                raise Exception(str(token_response))
-            self._token = token_response["access_token"]
-        return self._token
 
     def encrypt_pin_strict(self, pin: str) -> Optional[str]:
         token = self.get_token()

@@ -1,12 +1,13 @@
-# 🍍 PinappleClient
+# 🍍 PinappleClient 🍍
 
 A Python client for interacting with the Pinapple encryption API.
 
 ## 🚀 Features
 
-- **Authentication** 🔐 - Token-based API authentication
+- **Authentication** 🔐 - Token-based API authentication with automatic refresh
 - **Flexible Encryption** ⚡ - Support for strict and loose encryption modes
 - **Fallback Strategy** 🔄 - Automatic fallback from strict to loose encryption
+- **Smart Token Management** ⏰ - Configurable token refresh with expiration handling
 
 ## 📦 Installation
 
@@ -19,11 +20,12 @@ pip install PinappleClient
 ```python
 from pinapple_client import PinappleClient
 
-# Initialize client
+# Initialize client with automatic token refresh
 client = PinappleClient(
     user="your_username",
     password="your_password",
-    api_url="https://api.pinapple.com"
+    api_url="https://api.pinapple.com",
+    refresh_buffer_minutes=5  # Refresh token 5 minutes before expiration
 )
 
 # Encrypt a single PIN
@@ -61,14 +63,32 @@ encrypted_df = client.encrypt_dataframe(df, 'pin', strict_then_loose=True)
 - `strict`: Use strict encryption (default: True)
 - `strict_then_loose`: Enable fallback strategy (default: False)
 
-## 🔒 Authentication
+## 🔒 Authentication & Token Management
 
-The client automatically handles token management:
+The client automatically handles token management with intelligent refresh:
 
-1. Requests a bearer token on first API call
-2. Caches the token for subsequent requests
-3. Automatically includes authentication headers
+### Automatic Token Refresh
+- Requests a bearer token on first API call
+- Caches the token for subsequent requests
+- **Automatically refreshes tokens before expiration** based on configurable buffer time
+- Handles long-running operations without token expiry issues
 
+### Token Configuration
+```python
+# Refresh token 10 minutes before it expires
+client = PinappleClient(..., refresh_buffer_minutes=10)
+
+# Check token status
+expiration = client.get_token_expiration()
+should_refresh = client.should_refresh_token()
+```
+
+### Token Utilities
+- `get_token_expiration()` - Returns token expiration as datetime
+- `should_refresh_token()` - Checks if token needs refresh based on buffer
+- Automatic refresh during long DataFrame operations
+
+**Perfect for long-running encryption jobs** - no manual token management required!
 
 ## 📄 License
 
