@@ -1,11 +1,13 @@
-import base64
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 import time
 import json
 from typing import Optional, Any
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import pandas as pd
+import base64
 
 
 @dataclass
@@ -17,20 +19,45 @@ class PinappleClient:
     timeout: int = 30
     max_retries: int = 3
     backoff_base: float = 2.0
+    _session: requests.Session = field(default=None, init=False, repr=False)
+    _token: Optional[str] = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
-        self._token: Optional[str] = None
+        self._session = self._create_session()
+
+    def _create_session(self) -> requests.Session:
+        session = requests.Session()
+        retry = Retry(
+            total=0,
+            connect=self.max_retries,
+            read=self.max_retries,
+            backoff_factor=self.backoff_base,
+        )
+        adapter = HTTPAdapter(max_retries=retry, pool_connections=10, pool_maxsize=10)
+        session.mount("https://", adapter)
+        session.mount("http://", adapter)
+        return session
+
+    def close(self) -> None:
+        if self._session:
+            self._session.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
 
     def get_token_expiration(self) -> Optional[datetime]:
         if self._token is None:
             return None
 
         try:
-            payload_b64 = self._token.split('.')[1]
-            payload_b64 += '=' * (4 - len(payload_b64) % 4)
+            payload_b64 = self._token.split(".")[1]
+            payload_b64 += "=" * (4 - len(payload_b64) % 4)
             payload = json.loads(base64.b64decode(payload_b64))
 
-            exp_timestamp = payload.get('exp')
+            exp_timestamp = payload.get("exp")
             if exp_timestamp is None:
                 return None
 
@@ -64,15 +91,14 @@ class PinappleClient:
         headers: dict[str, str],
         data: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
-
         for attempt in range(self.max_retries):
             try:
-                response = requests.post(
+                response = self._session.post(
                     f"{self.api_url}/{endpoint}",
                     json=data if endpoint != "auth/token" else None,
                     data=data if endpoint == "auth/token" else None,
                     headers=headers,
-                    timeout=self.timeout
+                    timeout=self.timeout,
                 )
 
                 try:
@@ -82,15 +108,20 @@ class PinappleClient:
                         f"{self.api_url}/{endpoint}: Non-JSON response: {response.text}"
                     )
 
-            except (requests.exceptions.ConnectionError,
-                    requests.exceptions.Timeout,
-                    requests.exceptions.RequestException) as e:
-
+            except (
+                requests.exceptions.ConnectionError,
+                requests.exceptions.Timeout,
+                requests.exceptions.RequestException,
+            ) as e:
                 if attempt == self.max_retries - 1:
-                    raise Exception(f"Failed to connect after {self.max_retries} attempts: {str(e)}")
+                    raise Exception(
+                        f"Failed after {self.max_retries} attempts: {str(e)}"
+                    )
 
                 wait_time = self.backoff_base ** (attempt + 1)
-                print(f"Connection attempt {attempt + 1} failed: {str(e)}. Retrying in {wait_time}s...")
+                print(
+                    f"Attempt {attempt + 1} failed: {str(e)}. Retrying in {wait_time}s..."
+                )
                 time.sleep(wait_time)
 
     def encrypt_pin_strict(self, pin: str) -> Optional[str]:
@@ -185,7 +216,6 @@ class PinappleClient:
         df.loc[mask, column] = df.loc[mask, column].apply(encrypt_func)
         return df
 
-
     def encrypt_pin_strict_bulk(self, pins: list[str]) -> list[dict[str, Any]]:
         token = self.get_token()
         encrypted_response = self._call_api(
@@ -218,7 +248,9 @@ class PinappleClient:
 
         return encrypted_response
 
-    def encrypt_pin_strict_then_loose_bulk(self, pins: list[str]) -> list[dict[str, Any]]:
+    def encrypt_pin_strict_then_loose_bulk(
+        self, pins: list[str]
+    ) -> list[dict[str, Any]]:
         results_strict = self.encrypt_pin_strict_bulk(pins=pins)
 
         failed_pins = [r["pin"] for r in results_strict if not r["success"]]
@@ -254,7 +286,7 @@ class PinappleClient:
 
         all_results = []
         for i in range(0, len(pins_to_encrypt), batch_size):
-            batch = pins_to_encrypt[i:i + batch_size]
+            batch = pins_to_encrypt[i : i + batch_size]
 
             if strict_then_loose:
                 results = self.encrypt_pin_strict_then_loose_bulk(pins=batch)
@@ -265,7 +297,9 @@ class PinappleClient:
 
             all_results.extend(results)
 
-        pin_to_encrypted = {r["pin"]: r["encrypted_id"] for r in all_results if r["success"]}
+        pin_to_encrypted = {
+            r["pin"]: r["encrypted_id"] for r in all_results if r["success"]
+        }
 
         df.loc[mask, column] = df.loc[mask, column].astype(str).map(pin_to_encrypted)
 
