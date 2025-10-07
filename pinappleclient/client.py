@@ -184,3 +184,89 @@ class PinappleClient:
         print(f"Running {mask.sum()} rows through encryption.")
         df.loc[mask, column] = df.loc[mask, column].apply(encrypt_func)
         return df
+
+
+    def encrypt_pin_strict_bulk(self, pins: list[str]) -> list[dict[str, Any]]:
+        token = self.get_token()
+        encrypted_response = self._call_api(
+            endpoint="encrypt/strict/bulk",
+            headers={
+                "Authorization": f"bearer {token}",
+                "Content-Type": "application/json",
+            },
+            data={"pins": pins},
+        )
+
+        if not isinstance(encrypted_response, list):
+            raise Exception(str(encrypted_response))
+
+        return encrypted_response
+
+    def encrypt_pin_loose_bulk(self, pins: list[str]) -> list[dict[str, Any]]:
+        token = self.get_token()
+        encrypted_response = self._call_api(
+            endpoint="encrypt/loose/bulk",
+            headers={
+                "Authorization": f"bearer {token}",
+                "Content-Type": "application/json",
+            },
+            data={"pins": pins},
+        )
+
+        if not isinstance(encrypted_response, list):
+            raise Exception(str(encrypted_response))
+
+        return encrypted_response
+
+    def encrypt_pin_strict_then_loose_bulk(self, pins: list[str]) -> list[dict[str, Any]]:
+        results_strict = self.encrypt_pin_strict_bulk(pins=pins)
+
+        failed_pins = [r["pin"] for r in results_strict if not r["success"]]
+
+        if not failed_pins:
+            return results_strict
+
+        results_loose = self.encrypt_pin_loose_bulk(pins=failed_pins)
+
+        loose_lookup = {r["pin"]: r for r in results_loose}
+
+        final_results = []
+        for result in results_strict:
+            if result["success"]:
+                final_results.append(result)
+            else:
+                final_results.append(loose_lookup[result["pin"]])
+
+        return final_results
+
+    def encrypt_dataframe_bulk(
+        self,
+        df: pd.DataFrame,
+        column: str,
+        strict: bool = True,
+        strict_then_loose: bool = False,
+        batch_size: int = 100,
+    ) -> pd.DataFrame:
+        mask = pd.notna(df[column])
+        pins_to_encrypt = df.loc[mask, column].astype(str).tolist()
+
+        print(f"Running {len(pins_to_encrypt)} rows through bulk encryption.")
+
+        all_results = []
+        for i in range(0, len(pins_to_encrypt), batch_size):
+            batch = pins_to_encrypt[i:i + batch_size]
+
+            if strict_then_loose:
+                results = self.encrypt_pin_strict_then_loose_bulk(pins=batch)
+            elif strict:
+                results = self.encrypt_pin_strict_bulk(pins=batch)
+            else:
+                results = self.encrypt_pin_loose_bulk(pins=batch)
+
+            all_results.extend(results)
+
+        pin_to_encrypted = {r["pin"]: r["encrypted_id"] for r in all_results if r["success"]}
+
+        df.loc[mask, column] = df.loc[mask, column].astype(str).map(pin_to_encrypted)
+
+        return df
