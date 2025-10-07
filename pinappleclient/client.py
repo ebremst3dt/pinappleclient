@@ -1,3 +1,4 @@
+import base64
 from dataclasses import dataclass, field
 from datetime import datetime
 import time
@@ -7,7 +8,7 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import pandas as pd
-import base64
+import threading
 
 
 @dataclass
@@ -21,6 +22,9 @@ class PinappleClient:
     backoff_base: float = 2.0
     _session: requests.Session = field(default=None, init=False, repr=False)
     _token: Optional[str] = field(default=None, init=False, repr=False)
+    _lock: threading.Lock = field(
+        default_factory=threading.Lock, init=False, repr=False
+    )
 
     def __post_init__(self) -> None:
         self._session = self._create_session()
@@ -33,7 +37,7 @@ class PinappleClient:
             read=self.max_retries,
             backoff_factor=self.backoff_base,
         )
-        adapter = HTTPAdapter(max_retries=retry, pool_connections=10, pool_maxsize=10)
+        adapter = HTTPAdapter(max_retries=retry, pool_connections=10, pool_maxsize=20)
         session.mount("https://", adapter)
         session.mount("http://", adapter)
         return session
@@ -74,15 +78,16 @@ class PinappleClient:
         return time_until_exp <= (self.refresh_token_after_x_minutes * 60)
 
     def get_token(self) -> str:
-        if self._token is None or self.should_refresh_token():
-            token_response = self._call_api(
-                endpoint="auth/token",
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
-                data={"username": self.user, "password": self.password},
-            )
-            if "access_token" not in token_response:
-                raise Exception(str(token_response))
-            self._token = token_response["access_token"]
+        with self._lock:
+            if self._token is None or self.should_refresh_token():
+                token_response = self._call_api(
+                    endpoint="auth/token",
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                    data={"username": self.user, "password": self.password},
+                )
+                if "access_token" not in token_response:
+                    raise Exception(str(token_response))
+                self._token = token_response["access_token"]
         return self._token
 
     def _call_api(
@@ -123,6 +128,8 @@ class PinappleClient:
                     f"Attempt {attempt + 1} failed: {str(e)}. Retrying in {wait_time}s..."
                 )
                 time.sleep(wait_time)
+
+        raise Exception(f"Exhausted all retries for {endpoint}")
 
     def encrypt_pin_strict(self, pin: str) -> Optional[str]:
         token = self.get_token()
