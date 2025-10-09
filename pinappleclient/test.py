@@ -68,12 +68,19 @@ def test_pinapple_endpoints() -> None:
 
     # Test 4: DataFrame encryption with retry capability
     try:
-        test_df = pd.DataFrame({
-            "id": [1, 2, 3, 4, 5],
-            "personnummer": ["20150331-9442", "20150331-9442", "20150331-9442",
-                           "20150331-9442", "20150331-9442"],
-            "name": ["Alice", "Bob", "Charlie", "David", "Eve"],
-        })
+        test_df = pd.DataFrame(
+            {
+                "id": [1, 2, 3, 4, 5],
+                "personnummer": [
+                    "20150331-9442",
+                    "20150331-9442",
+                    "20150331-9442",
+                    "20150331-9442",
+                    "20150331-9442",
+                ],
+                "name": ["Alice", "Bob", "Charlie", "David", "Eve"],
+            }
+        )
 
         print(f"\n--- DataFrame encryption (with retry logic) ---")
         print("Original DataFrame:")
