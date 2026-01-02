@@ -1,6 +1,6 @@
 from client_v2 import PinappleClient
 
-pins_to_process = ["19920622-2359", "987654321", "19920682-2354", "!@#$%^&*()"]
+pins_to_process = ["19920622-2359", "987654321", "19920682-2356", "!@#$%^&*()"]
 
 with PinappleClient(
     user="blorgh123", password="wee123", api_url="http://localhost:8000"
