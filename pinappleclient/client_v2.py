@@ -107,6 +107,9 @@ class PinappleClient:
                     timeout=self.timeout,
                 )
 
+                print("CALLING")
+                print(f"{self.api_url}/{endpoint}")
+
                 if response.status_code == 503:
                     if attempt == self.max_retries - 1:
                         raise Exception(
@@ -156,27 +159,34 @@ class PinappleClient:
             data={"pins": pins},
         )
 
-        if "encrypted_string" not in encrypted_response:
+        print(encrypted_response)
+
+        if not isinstance(encrypted_response, list):
             raise Exception(str(encrypted_response))
 
-        return encrypted_response["encrypted_string"]
+        return encrypted_response
 
-
-    def decrypt_pin(self, encrypted_data: dict[str, Any]) -> Optional[str]:
+    def decrypt_pin(self, encrypted_strings: list[str]) -> list[dict[str, str | bool]]:
         token = self.get_token()
         decrypted_response = self._call_api(
-            endpoint="decrypt",
+            endpoint="v2/decrypt",
             headers={
                 "Authorization": f"bearer {token}",
                 "Content-Type": "application/json",
             },
-            data=encrypted_data,
+            data={"encrypted_strings": encrypted_strings},
         )
 
-        if "decrypted_string" not in decrypted_response:
-            raise Exception(str(decrypted_response))
+        return decrypted_response
 
-        return decrypted_response["decrypted_string"]
+    def validate_pin(self, pins: list[str]) -> list[dict]:
+        response = self._session.post(
+            f"{self.api_url}/v2/validate", json={"pins": pins}
+        )
+        print(f"Response status: {response.status_code}")
+        print(f"Response body: {response.text}")
+        response.raise_for_status()
+        return response.json()
 
     def encrypt_pandas_dataframe(
         self,
@@ -201,7 +211,9 @@ class PinappleClient:
             r["pin"]: r["encrypted_id"] for r in all_results if r["success"]
         }
 
-        df.loc[mask, column_name] = df.loc[mask, column_name].astype(str).map(pin_to_encrypted)
+        df.loc[mask, column_name] = (
+            df.loc[mask, column_name].astype(str).map(pin_to_encrypted)
+        )
 
         return df
 
