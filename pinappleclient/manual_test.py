@@ -36,16 +36,20 @@ with PinappleClient(
     print("=" * 80)
     print("TESTING PANDAS DATAFRAME ENCRYPTION")
     print("=" * 80)
-    df_pandas = pd.DataFrame({
-        "id": [1, 2, 3, 4, 5],
-        "pin": ["19920622-2359", "987654321", None, "19920682-2356", "!@#$%^&*()"],
-        "name": ["Alice", "Bob", "Charlie", "Diana", "Eve"]
-    })
+    df_pandas = pd.DataFrame(
+        {
+            "id": [1, 2, 3, 4, 5],
+            "pin": ["19920622-2359", "987654321", None, "19920682-2356", "!@#$%^&*()"],
+            "name": ["Alice", "Bob", "Charlie", "Diana", "Eve"],
+        }
+    )
     print("BEFORE encryption:")
     print(df_pandas)
     print()
 
-    encrypted_df_pandas = client.encrypt_pandas_dataframe(df_pandas.copy(), "pin", batch_size=2)
+    encrypted_df_pandas = client.encrypt_pandas_dataframe(
+        df_pandas.copy(), "pin", batch_size=2
+    )
     print("AFTER encryption:")
     print(encrypted_df_pandas)
     print()
@@ -57,7 +61,9 @@ with PinappleClient(
     print(encrypted_df_pandas)
     print()
 
-    decrypted_df_pandas = client.decrypt_pandas_dataframe(encrypted_df_pandas.copy(), "pin", batch_size=2)
+    decrypted_df_pandas = client.decrypt_pandas_dataframe(
+        encrypted_df_pandas.copy(), "pin", batch_size=2
+    )
     print("AFTER decryption:")
     print(decrypted_df_pandas)
     print()
@@ -65,16 +71,20 @@ with PinappleClient(
     print("=" * 80)
     print("TESTING POLARS DATAFRAME ENCRYPTION")
     print("=" * 80)
-    df_polars = pl.DataFrame({
-        "id": [1, 2, 3, 4, 5],
-        "pin": ["19920622-2359", "987654321", None, "19920682-2356", "!@#$%^&*()"],
-        "name": ["Alice", "Bob", "Charlie", "Diana", "Eve"]
-    })
+    df_polars = pl.DataFrame(
+        {
+            "id": [1, 2, 3, 4, 5],
+            "pin": ["19920622-2359", "987654321", None, "19920682-2356", "!@#$%^&*()"],
+            "name": ["Alice", "Bob", "Charlie", "Diana", "Eve"],
+        }
+    )
     print("BEFORE encryption:")
     print(df_polars)
     print()
 
-    encrypted_df_polars = client.encrypt_polars_dataframe(df_polars.clone(), "pin", batch_size=2)
+    encrypted_df_polars = client.encrypt_polars_dataframe(
+        df_polars.clone(), "pin", batch_size=2
+    )
     print("AFTER encryption:")
     print(encrypted_df_polars)
     print()
@@ -86,6 +96,8 @@ with PinappleClient(
     print(encrypted_df_polars)
     print()
 
-    decrypted_df_polars = client.decrypt_polars_dataframe(encrypted_df_polars.clone(), "pin", batch_size=2)
+    decrypted_df_polars = client.decrypt_polars_dataframe(
+        encrypted_df_polars.clone(), "pin", batch_size=2
+    )
     print("AFTER decryption:")
     print(decrypted_df_polars)

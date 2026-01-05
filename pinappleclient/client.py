@@ -160,7 +160,6 @@ class PinappleClient:
             data={"pins": pins},
         )
 
-
     def decrypt_pins(self, encrypted_strings: list[str]) -> list[dict[str, str | bool]]:
         token = self.get_token()
         return self._call_api(
@@ -196,16 +195,16 @@ class PinappleClient:
             results = self.encrypt_pins(pins=batch)
             all_results.extend(results)
 
-        pin_to_encrypted = {
-            r["pin"]: r["encrypted_id"] for r in all_results
-        }
+        pin_to_encrypted = {r["pin"]: r["encrypted_id"] for r in all_results}
 
         df.loc[mask, column_name] = (
-            df.loc[mask, column_name].astype(str).map(pin_to_encrypted).fillna(df.loc[mask, column_name])
+            df.loc[mask, column_name]
+            .astype(str)
+            .map(pin_to_encrypted)
+            .fillna(df.loc[mask, column_name])
         )
 
         return df
-
 
     def encrypt_polars_dataframe(
         self,
@@ -224,16 +223,16 @@ class PinappleClient:
             results = self.encrypt_pins(pins=batch)
             all_results.extend(results)
 
-        pin_to_encrypted = {
-            r["pin"]: r["encrypted_id"] for r in all_results
-        }
+        pin_to_encrypted = {r["pin"]: r["encrypted_id"] for r in all_results}
 
         df = df.with_columns(
             pl.when(mask)
             .then(
                 pl.col(column_name)
                 .cast(pl.Utf8)
-                .replace_strict(pin_to_encrypted, default=pl.col(column_name), return_dtype=pl.Utf8)
+                .replace_strict(
+                    pin_to_encrypted, default=pl.col(column_name), return_dtype=pl.Utf8
+                )
             )
             .otherwise(pl.col(column_name))
             .alias(column_name)
@@ -270,7 +269,6 @@ class PinappleClient:
 
         return df
 
-
     def decrypt_polars_dataframe(
         self,
         df: pl.DataFrame,
@@ -296,7 +294,11 @@ class PinappleClient:
 
         df = df.with_columns(
             pl.when(mask)
-            .then(pl.col(column_name).cast(pl.Utf8).replace_strict(encrypted_to_pin, default=None))
+            .then(
+                pl.col(column_name)
+                .cast(pl.Utf8)
+                .replace_strict(encrypted_to_pin, default=None)
+            )
             .otherwise(pl.col(column_name))
             .alias(column_name)
         )
