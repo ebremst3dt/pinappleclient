@@ -8,6 +8,7 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import pandas as pd
+import polars as pl
 import threading
 
 
@@ -106,6 +107,21 @@ class PinappleClient:
                     timeout=self.timeout,
                 )
 
+                if response.status_code == 503:
+                    if attempt == self.max_retries - 1:
+                        raise Exception(
+                            f"Failed after {self.max_retries} attempts: Database connection error"
+                        )
+
+                    wait_time = self.backoff_base ** (attempt + 1)
+                    print(
+                        f"Attempt {attempt + 1} failed: Database error. Retrying in {wait_time}s..."
+                    )
+                    time.sleep(wait_time)
+                    continue
+
+                response.raise_for_status()
+
                 try:
                     return response.json()
                 except Exception:
@@ -113,6 +129,8 @@ class PinappleClient:
                         f"{self.api_url}/{endpoint}: Non-JSON response: {response.text}"
                     )
 
+            except requests.exceptions.HTTPError as e:
+                raise Exception(f"HTTP {e.response.status_code}: {e.response.text}")
             except (
                 requests.exceptions.ConnectionError,
                 requests.exceptions.Timeout,
@@ -131,102 +149,10 @@ class PinappleClient:
 
         raise Exception(f"Exhausted all retries for {endpoint}")
 
-    def encrypt_pin_strict(self, pin: str) -> Optional[str]:
+    def encrypt_pins(self, pins: list[str]) -> list[dict[str, Any]]:
         token = self.get_token()
-        encrypted_response = self._call_api(
-            endpoint="encrypt/strict",
-            headers={
-                "Authorization": f"bearer {token}",
-                "Content-Type": "application/json",
-            },
-            data={"input_string": pin},
-        )
-
-        if "encrypted_string" not in encrypted_response:
-            raise Exception(str(encrypted_response))
-
-        return encrypted_response["encrypted_string"]
-
-    def encrypt_pin_loose(self, pin: str) -> Optional[str]:
-        token = self.get_token()
-        encrypted_response = self._call_api(
-            endpoint="encrypt/loose",
-            headers={
-                "Authorization": f"bearer {token}",
-                "Content-Type": "application/json",
-            },
-            data={"input_string": pin},
-        )
-
-        if "encrypted_string" not in encrypted_response:
-            raise Exception(str(encrypted_response))
-
-        return encrypted_response["encrypted_string"]
-
-    def encrypt_pin_strict_then_loose(self, pin: str) -> Optional[str]:
-        token = self.get_token()
-        encrypted_response_strict = self._call_api(
-            endpoint="encrypt/strict",
-            headers={
-                "Authorization": f"bearer {token}",
-                "Content-Type": "application/json",
-            },
-            data={"input_string": pin},
-        )
-
-        if "encrypted_string" not in encrypted_response_strict:
-            encrypted_response_loose = self._call_api(
-                endpoint="encrypt/loose",
-                headers={
-                    "Authorization": f"bearer {token}",
-                    "Content-Type": "application/json",
-                },
-                data={"input_string": pin},
-            )
-            if "encrypted_string" not in encrypted_response_loose:
-                raise Exception(str(encrypted_response_loose))
-
-            return encrypted_response_loose["encrypted_string"]
-
-        return encrypted_response_strict["encrypted_string"]
-
-    def decrypt_pin(self, encrypted_data: dict[str, Any]) -> Optional[str]:
-        token = self.get_token()
-        decrypted_response = self._call_api(
-            endpoint="decrypt",
-            headers={
-                "Authorization": f"bearer {token}",
-                "Content-Type": "application/json",
-            },
-            data=encrypted_data,
-        )
-
-        if "decrypted_string" not in decrypted_response:
-            raise Exception(str(decrypted_response))
-
-        return decrypted_response["decrypted_string"]
-
-    def encrypt_dataframe(
-        self,
-        df: pd.DataFrame,
-        column: str,
-        strict: bool = True,
-        strict_then_loose: bool = False,
-    ) -> pd.DataFrame:
-        encrypt_func = self.encrypt_pin_strict if strict else self.encrypt_pin_loose
-
-        if strict_then_loose:
-            encrypt_func = self.encrypt_pin_strict_then_loose
-
-        mask = pd.notna(df[column])
-        print(f"Running {mask.sum()} rows through encryption.")
-        df.loc[mask, column] = df.loc[mask, column].apply(encrypt_func)
-        return df
-
-    def encrypt_pin_strict_bulk(self, pins: list[str]) -> list[dict[str, Any]]:
-        token = self.get_token()
-        encrypted_response = self._call_api(
-            endpoint="encrypt/strict/bulk",
+        return self._call_api(
+            endpoint="v2/encrypt",
             headers={
                 "Authorization": f"bearer {token}",
                 "Content-Type": "application/json",
@@ -234,80 +160,147 @@ class PinappleClient:
             data={"pins": pins},
         )
 
-        if not isinstance(encrypted_response, list):
-            raise Exception(str(encrypted_response))
-
-        return encrypted_response
-
-    def encrypt_pin_loose_bulk(self, pins: list[str]) -> list[dict[str, Any]]:
+    def decrypt_pins(self, encrypted_strings: list[str]) -> list[dict[str, str | bool]]:
         token = self.get_token()
-        encrypted_response = self._call_api(
-            endpoint="encrypt/loose/bulk",
+        return self._call_api(
+            endpoint="v2/decrypt",
             headers={
                 "Authorization": f"bearer {token}",
                 "Content-Type": "application/json",
             },
-            data={"pins": pins},
+            data={"encrypted_strings": encrypted_strings},
         )
 
-        if not isinstance(encrypted_response, list):
-            raise Exception(str(encrypted_response))
+    def validate_pins(self, pins: list[str]) -> list[dict]:
+        response = self._session.post(
+            f"{self.api_url}/v2/validate", json={"pins": pins}
+        )
+        response.raise_for_status()
+        return response.json()
 
-        return encrypted_response
-
-    def encrypt_pin_strict_then_loose_bulk(
-        self, pins: list[str]
-    ) -> list[dict[str, Any]]:
-        results_strict = self.encrypt_pin_strict_bulk(pins=pins)
-
-        failed_pins = [r["pin"] for r in results_strict if not r["success"]]
-
-        if not failed_pins:
-            return results_strict
-
-        results_loose = self.encrypt_pin_loose_bulk(pins=failed_pins)
-
-        loose_lookup = {r["pin"]: r for r in results_loose}
-
-        final_results = []
-        for result in results_strict:
-            if result["success"]:
-                final_results.append(result)
-            else:
-                final_results.append(loose_lookup[result["pin"]])
-
-        return final_results
-
-    def encrypt_dataframe_bulk(
+    def encrypt_pandas_dataframe(
         self,
         df: pd.DataFrame,
-        column: str,
-        strict: bool = True,
-        strict_then_loose: bool = False,
+        column_name: str,
         batch_size: int = 100,
     ) -> pd.DataFrame:
-        mask = pd.notna(df[column])
-        pins_to_encrypt = df.loc[mask, column].astype(str).tolist()
+        mask = pd.notna(df[column_name])
+        pins_to_encrypt = df.loc[mask, column_name].astype(str).tolist()
 
-        print(f"Running {len(pins_to_encrypt)} rows through bulk encryption.")
+        print(f"Encrypting {len(pins_to_encrypt)} rows (pandas)")
 
         all_results = []
         for i in range(0, len(pins_to_encrypt), batch_size):
             batch = pins_to_encrypt[i : i + batch_size]
-
-            if strict_then_loose:
-                results = self.encrypt_pin_strict_then_loose_bulk(pins=batch)
-            elif strict:
-                results = self.encrypt_pin_strict_bulk(pins=batch)
-            else:
-                results = self.encrypt_pin_loose_bulk(pins=batch)
-
+            results = self.encrypt_pins(pins=batch)
             all_results.extend(results)
 
-        pin_to_encrypted = {
-            r["pin"]: r["encrypted_id"] for r in all_results if r["success"]
+        pin_to_encrypted = {r["pin"]: r["encrypted_id"] for r in all_results}
+
+        df.loc[mask, column_name] = (
+            df.loc[mask, column_name]
+            .astype(str)
+            .map(pin_to_encrypted)
+            .fillna(df.loc[mask, column_name])
+        )
+
+        return df
+
+    def encrypt_polars_dataframe(
+        self,
+        df: pl.DataFrame,
+        column_name: str,
+        batch_size: int = 100,
+    ) -> pl.DataFrame:
+        mask = df[column_name].is_not_null()
+        pins_to_encrypt = df.filter(mask)[column_name].cast(pl.Utf8).to_list()
+
+        print(f"Encrypting {len(pins_to_encrypt)} rows (polars)")
+
+        all_results = []
+        for i in range(0, len(pins_to_encrypt), batch_size):
+            batch = pins_to_encrypt[i : i + batch_size]
+            results = self.encrypt_pins(pins=batch)
+            all_results.extend(results)
+
+        pin_to_encrypted = {r["pin"]: r["encrypted_id"] for r in all_results}
+
+        df = df.with_columns(
+            pl.when(mask)
+            .then(
+                pl.col(column_name)
+                .cast(pl.Utf8)
+                .replace_strict(
+                    pin_to_encrypted, default=pl.col(column_name), return_dtype=pl.Utf8
+                )
+            )
+            .otherwise(pl.col(column_name))
+            .alias(column_name)
+        )
+
+        return df
+
+    def decrypt_pandas_dataframe(
+        self,
+        df: pd.DataFrame,
+        column_name: str,
+        batch_size: int = 100,
+    ) -> pd.DataFrame:
+        mask = pd.notna(df[column_name])
+        encrypted_to_decrypt = df.loc[mask, column_name].astype(str).tolist()
+
+        print(f"Decrypting {len(encrypted_to_decrypt)} rows (pandas)")
+
+        all_results = []
+        for i in range(0, len(encrypted_to_decrypt), batch_size):
+            batch = encrypted_to_decrypt[i : i + batch_size]
+            results = self.decrypt_pins(encrypted_strings=batch)
+            all_results.extend(results)
+
+        encrypted_to_pin = {
+            r["encrypted_string"]: r["decrypted_string"]
+            for r in all_results
+            if r["decrypted_string"] is not None
         }
 
-        df.loc[mask, column] = df.loc[mask, column].astype(str).map(pin_to_encrypted)
+        df.loc[mask, column_name] = (
+            df.loc[mask, column_name].astype(str).map(encrypted_to_pin)
+        )
+
+        return df
+
+    def decrypt_polars_dataframe(
+        self,
+        df: pl.DataFrame,
+        column_name: str,
+        batch_size: int = 100,
+    ) -> pl.DataFrame:
+        mask = df[column_name].is_not_null()
+        encrypted_to_decrypt = df.filter(mask)[column_name].cast(pl.Utf8).to_list()
+
+        print(f"Decrypting {len(encrypted_to_decrypt)} rows (polars)")
+
+        all_results = []
+        for i in range(0, len(encrypted_to_decrypt), batch_size):
+            batch = encrypted_to_decrypt[i : i + batch_size]
+            results = self.decrypt_pins(encrypted_strings=batch)
+            all_results.extend(results)
+
+        encrypted_to_pin = {
+            r["encrypted_string"]: r["decrypted_string"]
+            for r in all_results
+            if r["decrypted_string"] is not None
+        }
+
+        df = df.with_columns(
+            pl.when(mask)
+            .then(
+                pl.col(column_name)
+                .cast(pl.Utf8)
+                .replace_strict(encrypted_to_pin, default=None)
+            )
+            .otherwise(pl.col(column_name))
+            .alias(column_name)
+        )
 
         return df

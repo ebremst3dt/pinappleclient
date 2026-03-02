@@ -1,51 +1,33 @@
 # 🍍 PinappleClient 🍍
 
-A Python client for interacting with the Pinapple encryption API.
+Python client for the Pinapple encryption API with automatic token management and robust error handling.
 
-## 🚀 Features
-
-- **Authentication** 🔐 - Token-based API authentication with automatic refresh
-- **Flexible Encryption** ⚡ - Support for strict and loose encryption modes
-- **Fallback Strategy** 🔄 - Automatic fallback from strict to loose encryption
-- **Smart Token Management** ⏰ - Configurable token refresh with expiration handling
-- **Robust Network Handling** 🔁 - Automatic retries with configurable backoff for network issues
-
-## 📦 Installation
-
+## Installation
 ```bash
 pip install PinappleClient
 ```
 
-## 🔧 Quick Start
-
+## Quick Start
 ```python
 from pinapple_client import PinappleClient
 
-# Initialize client with automatic token refresh and network resilience
 client = PinappleClient(
-    user="your_username",
-    password="your_password",
-    api_url="https://api.pinapple.com",
-    refresh_token_after_x_minutes=5,  # Refresh token 5 minutes before expiration
-    timeout=30,                       # Request timeout in seconds
-    max_retries=3,                    # Number of retry attempts
-    backoff_base=2                    # Exponential backoff base (2s, 4s, 8s)
+    user="username",
+    password="password",
+    api_url="https://api.pinapple.com"
 )
 
-# Encrypt a single PIN
-encrypted_pin = client.encrypt_pin_strict("123456")
-print(f"Encrypted: {encrypted_pin}")
+# Encrypt/decrypt individual PINs
+encrypted = client.encrypt_pins(["123456", "789012"])
+decrypted = client.decrypt_pins(["enc_abc123", "enc_def456"])
 
-# Decrypt data
-decrypted_pin = client.decrypt_pin(encrypted_data)
-print(f"Decrypted: {decrypted_pin}")
+# Validate PINs
+validation = client.validate_pins(["123456", "789012"])
 ```
 
-### 📊 DataFrame Operations
+## DataFrame Operations
 
-#### `encrypt_dataframe(df, column, strict=True, strict_then_loose=False) -> DataFrame`
-Encrypts an entire column in a pandas DataFrame.
-
+### Pandas
 ```python
 import pandas as pd
 
@@ -54,79 +36,59 @@ df = pd.DataFrame({
     'pin': ['123456', '789012', '345678']
 })
 
-# Encrypt the 'pin' column
-encrypted_df = client.encrypt_dataframe(df, 'pin', strict=True)
+# Encrypt
+encrypted_df = client.encrypt_pandas_dataframe(df, 'pin', batch_size=100)
 
-# Use fallback strategy
-encrypted_df = client.encrypt_dataframe(df, 'pin', strict_then_loose=True)
+# Decrypt
+decrypted_df = client.decrypt_pandas_dataframe(encrypted_df, 'pin', batch_size=100)
 ```
 
-**Parameters:**
-- `df`: Input DataFrame
-- `column`: Column name to encrypt
-- `strict`: Use strict encryption (default: True)
-- `strict_then_loose`: Enable fallback strategy (default: False)
-
-## 🔒 Authentication & Token Management
-
-The client automatically handles token management with intelligent refresh:
-
-### Automatic Token Refresh
-- Requests a bearer token on first API call
-- Caches the token for subsequent requests
-- **Automatically refreshes tokens before expiration** based on configurable buffer time
-- Handles long-running operations without token expiry issues
-
-### Token Configuration
+### Polars
 ```python
-# Refresh token 10 minutes before it expires
-client = PinappleClient(..., refresh_token_after_x_minutes=10)
+import polars as pl
 
-# Check token status
-expiration = client.get_token_expiration()
-should_refresh = client.should_refresh_token()
+df = pl.DataFrame({
+    'id': [1, 2, 3],
+    'pin': ['123456', '789012', '345678']
+})
+
+# Encrypt
+encrypted_df = client.encrypt_polars_dataframe(df, 'pin', batch_size=100)
+
+# Decrypt
+decrypted_df = client.decrypt_polars_dataframe(encrypted_df, 'pin', batch_size=100)
 ```
 
-### Token Utilities
-- `get_token_expiration()` - Returns token expiration as datetime
-- `should_refresh_token()` - Checks if token needs refresh based on buffer
-- Automatic refresh during long DataFrame operations
-
-**Perfect for long-running encryption jobs** - no manual token management required!
-
-## 🔁 Network Resilience
-
-The client includes robust network error handling for unreliable connections:
-
-### Automatic Retry Logic
-- **Connection errors** (DNS resolution, network unreachable)
-- **Timeout errors** (slow network responses)
-- **Request exceptions** (various network issues)
-
-### Configurable Retry Parameters
+## Configuration
 ```python
 client = PinappleClient(
-    ...,
-    timeout=45,        # Longer timeout for slow networks
-    max_retries=5,     # More retry attempts
-    backoff_base=3     # Aggressive backoff (3s, 9s, 27s, 81s, 243s)
+    user="username",
+    password="password",
+    api_url="https://api.pinapple.com",
+    refresh_token_after_x_minutes=5,  # Token refresh buffer (default: 5)
+    timeout=30,                        # Request timeout (default: 30)
+    max_retries=3,                     # Retry attempts (default: 3)
+    backoff_base=2.0                   # Exponential backoff (default: 2.0)
 )
 ```
 
-### Retry Behavior
-- **Exponential backoff**: Wait time = `backoff_base ^ (attempt + 1)`
-- **Default settings**: 3 retries with 2s, 4s, 8s delays
-- **Progress feedback**: Logs each retry attempt with wait time
-- **Final failure**: Clear error message after all retries exhausted
+### Token Management
 
-**Ideal for corporate networks and VPN connections** with intermittent connectivity issues!
+- Automatic token refresh before expiration
+- Thread-safe token operations
+- JWT payload parsing for expiration tracking
 
-## 📄 License
+### Network Resilience
 
-This project is licensed under the GPL-3.0 License.
+- Exponential backoff retry: `backoff_base ^ (attempt + 1)`
+- Handles 503 database errors
+- Connection/timeout error recovery
 
-## 🔗 Links
+## License
 
-- [Homepage](https://github.com/ebremst3dt/pinappleclient)
-- [Issues](https://github.com/ebremst3dt/pinappleclient/issues)
-- [Pypi](https://pypi.org/project/PinappleClient/)
+GPL-3.0
+
+## Links
+
+- [GitHub](https://github.com/ebremst3dt/pinappleclient)
+- [PyPI](https://pypi.org/project/PinappleClient/)
