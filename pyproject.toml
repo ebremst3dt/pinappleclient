@@ -1,6 +1,6 @@
 [project]
 name = "PinappleClient"
-version = "1.4.2"
+version = "2.0.6"
 authors = [
  { name="Erik Bremstedt", email="erik.bremstedt-pedersen@regionstockholm.se" },
 ]
@@ -17,7 +17,12 @@ license = {text = "GPL-3.0"}
 dependencies = [
     "requests>=2.25.0,<3.0.0",
     "pandas>=1.3.0,<3.0.0",
-    "roskarl>=2.0.0,<3.0.0"
+    "roskarl>=3.1.20"
+]
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore:urllib3.*doesn't match a supported version:Warning",
 ]
 
 [project.urls]
