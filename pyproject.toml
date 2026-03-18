@@ -1,6 +1,6 @@
 [project]
 name = "PinappleClient"
-version = "2.0.4"
+version = "2.0.5"
 authors = [
  { name="Erik Bremstedt", email="erik.bremstedt-pedersen@regionstockholm.se" },
 ]
