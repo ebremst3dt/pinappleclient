@@ -1,6 +1,7 @@
 import base64
 from dataclasses import dataclass, field
 from datetime import datetime
+import logging
 import time
 import json
 from typing import Optional, Any
@@ -10,6 +11,8 @@ from urllib3.util.retry import Retry
 import pandas as pd
 import polars as pl
 import threading
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -21,7 +24,6 @@ class PinappleClient:
     timeout: int = 30
     max_retries: int = 3
     backoff_base: float = 2.0
-    debug: bool = False
     _session: requests.Session = field(default=None, init=False, repr=False)
     _token: Optional[str] = field(default=None, init=False, repr=False)
     _lock: threading.Lock = field(
@@ -115,10 +117,11 @@ class PinappleClient:
                         )
 
                     wait_time = self.backoff_base ** (attempt + 1)
-                    if self.debug:
-                        print(
-                            f"Attempt {attempt + 1} failed: Database error. Retrying in {wait_time}s..."
-                        )
+                    logger.debug(
+                        "Attempt %d failed: Database error. Retrying in %ss...",
+                        attempt + 1,
+                        wait_time,
+                    )
                     time.sleep(wait_time)
                     continue
 
@@ -144,10 +147,12 @@ class PinappleClient:
                     )
 
                 wait_time = self.backoff_base ** (attempt + 1)
-                if self.debug:
-                    print(
-                        f"Attempt {attempt + 1} failed: {str(e)}. Retrying in {wait_time}s..."
-                    )
+                logger.debug(
+                    "Attempt %d failed: %s. Retrying in %ss...",
+                    attempt + 1,
+                    e,
+                    wait_time,
+                )
                 time.sleep(wait_time)
 
         raise Exception(f"Exhausted all retries for {endpoint}")
@@ -190,8 +195,7 @@ class PinappleClient:
         mask = pd.notna(df[column_name])
         pins_to_encrypt = df.loc[mask, column_name].astype(str).tolist()
 
-        if self.debug:
-            print(f"Encrypting {len(pins_to_encrypt)} rows (pandas)")
+        logger.debug("Encrypting %d rows (pandas)", len(pins_to_encrypt))
 
         all_results = []
         for i in range(0, len(pins_to_encrypt), batch_size):
@@ -219,8 +223,7 @@ class PinappleClient:
         mask = df[column_name].is_not_null()
         pins_to_encrypt = df.filter(mask)[column_name].cast(pl.Utf8).to_list()
 
-        if self.debug:
-            print(f"Encrypting {len(pins_to_encrypt)} rows (polars)")
+        logger.debug("Encrypting %d rows (polars)", len(pins_to_encrypt))
 
         all_results = []
         for i in range(0, len(pins_to_encrypt), batch_size):
@@ -254,8 +257,7 @@ class PinappleClient:
         mask = pd.notna(df[column_name])
         encrypted_to_decrypt = df.loc[mask, column_name].astype(str).tolist()
 
-        if self.debug:
-            print(f"Decrypting {len(encrypted_to_decrypt)} rows (pandas)")
+        logger.debug("Decrypting %d rows (pandas)", len(encrypted_to_decrypt))
 
         all_results = []
         for i in range(0, len(encrypted_to_decrypt), batch_size):
@@ -284,8 +286,7 @@ class PinappleClient:
         mask = df[column_name].is_not_null()
         encrypted_to_decrypt = df.filter(mask)[column_name].cast(pl.Utf8).to_list()
 
-        if self.debug:
-            print(f"Decrypting {len(encrypted_to_decrypt)} rows (polars)")
+        logger.debug("Decrypting %d rows (polars)", len(encrypted_to_decrypt))
 
         all_results = []
         for i in range(0, len(encrypted_to_decrypt), batch_size):

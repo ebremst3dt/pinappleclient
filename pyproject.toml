@@ -20,6 +20,11 @@ dependencies = [
     "roskarl==3.1.19"
 ]
 
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore:urllib3.*doesn't match a supported version:Warning",
+]
+
 [project.urls]
 Homepage = "https://github.com/ebremst3dt/pinappleclient"
 Issues = "https://github.com/ebremst3dt/pinappleclient/issues"
